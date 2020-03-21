@@ -12,6 +12,8 @@ $(async function() {
   const $body = $('body');
   const $userProfile = $('#user-profile');
   const $favoritePosts = $('favorited-articles');
+  const $navWelcome = $('#nav-welcome');
+  const $mainNav = $('.main-nav-links');
 
   // global storyList variable
   let storyList = null;
@@ -292,7 +294,7 @@ $(async function() {
   function generateMyStories() {
     $ownStories.empty();
     if (currentUser.ownStories.length === 0) {
-      $ownStories.append('<h5>No stories added by user yet!</h5>');
+      $ownStories.append('<h3>**No stories added**</h3>');
     } else {
       for (let story of currentUser.ownStories) {
         let ownStoryHTML = generateStoryHTML(story, true);
@@ -311,6 +313,10 @@ $(async function() {
 
   function showNavForLoggedInUser() {
     $navLogin.hide();
+    $userProfile.hide();
+    $mainNav.toggleClass('hidden');
+    $navUserProfile.text(`${currentUser.username}`);
+    $navWelcome.show();
     $navLogOut.show();
   }
 
