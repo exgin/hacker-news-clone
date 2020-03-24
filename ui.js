@@ -14,6 +14,10 @@ $(async function() {
   const $favoritePosts = $('favorited-articles');
   const $navWelcome = $('#nav-welcome');
   const $mainNav = $('.main-nav-links');
+  const $navUserProfile = $('#nav-user-profile');
+  const $navCreatedStories = $('created-stories');
+  const $navFavStories = $('favorite-stories');
+  const $navCreateNewStory = $('create-new-story');
 
   // global storyList variable
   let storyList = null;
