@@ -1,23 +1,19 @@
-$(async function() {
+$(async function () {
   // cache some selectors we'll be using quite a bit
   const $allStoriesList = $('#all-articles-list');
   const $submitForm = $('#submit-form');
   const $filteredArticles = $('#filtered-articles');
+  const $favoritedArticles = $('#favorited-articles');
   const $loginForm = $('#login-form');
   const $createAccountForm = $('#create-account-form');
   const $ownStories = $('#my-articles');
   const $navLogin = $('#nav-login');
   const $navLogOut = $('#nav-logout');
-  // new variables
-  const $body = $('body');
-  const $userProfile = $('#user-profile');
-  const $favoritePosts = $('favorited-articles');
+  const $navProfile = $('#nav-user-profile');
   const $navWelcome = $('#nav-welcome');
-  const $mainNav = $('.main-nav-links');
-  const $navUserProfile = $('#nav-user-profile');
-  const $navCreatedStories = $('created-stories');
-  const $navFavStories = $('favorite-stories');
-  const $navCreateNewStory = $('create-new-story');
+  const $userProfile = $('#user-profile');
+  const $navBar = $('nav');
+  const $userNavLinks = $('.user-nav-links');
 
   // global storyList variable
   let storyList = null;
@@ -32,7 +28,7 @@ $(async function() {
    *  If successfully we will setup the user instance
    */
 
-  $loginForm.on('submit', async function(evt) {
+  $loginForm.on('submit', async function login(evt) {
     evt.preventDefault(); // no page-refresh on submit
 
     // grab the username and password
@@ -41,10 +37,13 @@ $(async function() {
 
     // call the login static method to build a user instance
     const userInstance = await User.login(username, password);
-    // set the global user to the user instance
-    currentUser = userInstance;
-    syncCurrentUserToLocalStorage();
-    loginAndSubmitForm();
+
+    if (userInstance) {
+      // set the global user to the user instance
+      currentUser = userInstance;
+      syncCurrentUserToLocalStorage();
+      loginAndSubmitForm();
+    }
   });
 
   /**
@@ -52,7 +51,7 @@ $(async function() {
    *  If successfully we will setup a new user instance
    */
 
-  $createAccountForm.on('submit', async function(evt) {
+  $createAccountForm.on('submit', async function createAccount(evt) {
     evt.preventDefault(); // no page refresh
 
     // grab the required fields
@@ -61,138 +60,208 @@ $(async function() {
     let password = $('#create-account-password').val();
 
     // call the create method, which calls the API and then builds a new user instance
+
     const newUser = await User.create(username, password, name);
-    currentUser = newUser;
-    syncCurrentUserToLocalStorage();
-    loginAndSubmitForm();
-  });
 
-  $submitForm.on('submit', async function(evt) {
-    evt.preventDefault();
-
-    const title = $('#title').val();
-    const url = $('#url').val();
-    const hostName = getHostName(url);
-    const author = $('#author').val();
-    const username = currentUser.username;
-
-    const storyObject = await storyList.addStory(currentUser, {
-      title,
-      author,
-      url,
-      username
-    });
-
-    // gen story markup for a new story
-    const storyMarkup = $(`
-    <li id="${storyObject.storyId}" class="id-${storyObject.storyId}">
-      <span class="star">
-        <i class="far fa-star"></i>
-      </span>
-      <a class="article-link" href="${url}" target="a_blank">
-        <strong>${title}</strong>
-      </a>
-      <small class="article-hostname ${hostName}">(${hostName})</small>
-      <small class="article-author">by ${author}</small>
-      <small class="article-username">posted by ${username}</small>
-    </li>
-   `);
-
-    $allStoriesList.prepend(storyMarkup);
-
-    // hide the form and reset it
-    $submitForm.slideToggle();
-    $submitForm.trigger('reset');
-  });
-
-  $body.on('click', async function(evt) {
-    if (currentUser) {
-      const $tgt = $(evt.target);
-      const $closestLi = $tgt.closest('li');
-      const storyId = $closestLi.attr('id');
-
-      // if target is already favortied, remove it from the user's list, then change star
-      if ($tgt.hasClass('fas')) {
-        await currentUser.removeFavorite(storyId);
-        $tgt.closest('i').toggleClass('fas far');
-      } else {
-        await currentUser.addFavorite(storyId);
-        $tgt.closest('i').toggleClass('fas far');
-      }
+    if (newUser) {
+      currentUser = newUser;
+      syncCurrentUserToLocalStorage();
+      loginAndSubmitForm();
     }
   });
 
   /**
-   * Log Out Functionality
+   * Event listener for submitting a new story.
    */
+  $submitForm.on('submit', async function submitStory(evt) {
+    evt.preventDefault(); // no page refresh
 
-  $navLogOut.on('click', function() {
-    // empty out local storage
-    localStorage.clear();
-    // refresh the page, clearing memory
-    location.reload();
+    // grab the required fields
+    let author = $('#author').val();
+    let title = $('#title').val();
+    let url = $('#url').val();
+
+    // create object for addStory function
+    let storyObj = {
+      author,
+      title,
+      url,
+    };
+
+    // call the addStroy method, which sends story data to the API and
+    //then builds a new story instance from the response
+    let newStory = await StoryList.addStory(currentUser, storyObj);
+    //add story to the DOM
+    const result = generateStoryHTML(newStory);
+    $allStoriesList.prepend(result);
+    //update global storyList variable
+    storyList.stories.push(newStory);
+    console.log(storyList);
+
+    //update currentUser
+    currentUser.ownStories.push(newStory);
+    $submitForm.slideToggle();
   });
 
-  /**
-   * Event Handler for Clicking Login
-   */
+  // Event listener to handle all clicks on the Nav Bar
+  $navBar.on('click', function handleNavBarClicks(evt) {
+    // When logged in, logout & nav-welcome won't work, so we target the parent
+    let $getParentID = $(evt.target).parent().attr('id');
+    let $basicID = $(evt.target).attr('id');
 
-  $navLogin.on('click', function() {
+    // EL Log-in
+    if ($basicID === 'nav-login') {
+      navLogin();
+    }
+
+    // EL Log-out
+    if ($getParentID === 'nav-logout') {
+      navLogOut();
+    }
+
+    // EL Showing profile
+    if ($getParentID === 'nav-welcome') {
+      navShowProfile();
+    }
+
+    // EL Showing every story
+    if ($basicID === 'nav-all') {
+      showStories();
+    }
+
+    /*** ALL LOG-IN FUNCTIONS ***/
+    if ($basicID === 'nav-submit') {
+      navShowCreateStory();
+    }
+
+    if ($basicID === 'nav-favorites') {
+      navFavorites();
+    }
+
+    if ($basicID === 'nav-my-stories') {
+      navMyStories();
+    }
+  });
+
+  // Logout
+  function navLogOut() {
+    $navLogOut.on('click', function () {
+      // empty out local storage
+      localStorage.clear();
+      // refresh the page, clearing memory
+      location.reload();
+    });
+  }
+
+  // Login
+  function navLogin() {
     // Show the Login and Create Account Forms
     $loginForm.slideToggle();
     $createAccountForm.slideToggle();
     $allStoriesList.toggle();
-  });
+  }
 
-  /**
-   * Event handler for Navigation to Homepage
-   */
+  function navShowProfile() {
+    $userProfile.show();
+    $allStoriesList.hide();
+    $favoritedArticles.show();
+    $ownStories.hide();
+  }
 
-  $body.on('click', '#nav-all', async function() {
+  // Nav to Homepage
+  async function showStories() {
     hideElements();
     await generateStories();
-    $allStoriesList.slideToggle();
-  });
+    $allStoriesList.show();
+    $favoritedArticles.hide();
+    $userProfile.hide();
+  }
 
-  $body.on('click', '#nav-favorites', async function() {
-    hideElements();
+  // Displaying add story form
+  function navShowCreateStory() {
+    $submitForm.slideToggle();
+  }
+
+  // Favorties Page
+  async function navFavorites() {
+    $allStoriesList.hide();
+    $favoritedArticles.show();
+    $ownStories.hide();
+    $userProfile.hide();
+
     if (currentUser) {
-      generateFavs();
-      $favoritePosts.slideToggle();
+      $favoritedArticles.empty();
+      addToPage(currentUser.favorites, $favoritedArticles);
+    }
+  }
+
+  // My Stories Page
+  async function navMyStories() {
+    $allStoriesList.hide();
+    $ownStories.show();
+    $favoritedArticles.hide();
+    $userProfile.hide();
+
+    // add stories to the page
+    if (currentUser) {
+      $ownStories.empty();
+      addToPage(currentUser.ownStories, $ownStories);
+
+      // add trash icon
+      for (li of $ownStories.children()) {
+        const $trash = $(`<i class="far fa-trash-alt"></i>`);
+        $trash.prependTo(li);
+      }
+    }
+  }
+
+  // EH for trash can
+  $ownStories.on('click', 'i', async function (evt) {
+    if ($(evt.target).hasClass('far fa-trash-alt')) {
+      //get storyId
+      const storyId = $(evt.target).parent().attr('id');
+
+      //remove story from API
+      const response = await StoryList.deleteStory(currentUser, storyId);
+      if (response) {
+        //update currentUser
+        updateUser(currentUser.ownStories, storyId);
+        updateUser(currentUser.favorites, storyId);
+
+        //remove from DOM
+        $(evt.target).parent().remove();
+      }
     }
   });
 
-  $body.on('click', '#nav-my-stories', function() {
-    hideElements();
+  $allStoriesList.on('click', 'i', async function handleNewFav(evt) {
+    // change star color
     if (currentUser) {
-      generateMyStories();
-      $ownStories.show();
+      $(evt.target).toggleClass('far').toggleClass('fas');
     }
-  });
 
-  $ownStories.on('click', '.trash-can', async function(evt) {
-    // get the Story's ID
-    const $closestLi = $(evt.target).closest('li');
-    const storyId = $closestLi.attr('id');
+    // select story ID
+    const favId = $(evt.target).parent().attr('id');
+    // check if the story is a favorite already
+    const check = currentUser.favorites.some((userStory) => favId === userStory.storyId);
 
-    // remove the story from the API
-    await storyList.removeStory(currentUser, storyId);
+    // update the user API and currentUser with new favorites
+    if (check) {
+      const userFavoritesMinus1 = await currentUser.removeFavorite(favId);
+      currentUser.favorites = userFavoritesMinus1;
+    }
 
-    // re-generate the story list
-    await generateStories();
-
-    // hide everyhing
-    hideElements();
-
-    // ...except the story list
-    $allStoriesList.slideToggle();
+    // update the user API and currentUser with new favorites
+    else {
+      const userFavoritesPlus1 = await currentUser.addFavorite(favId);
+      currentUser.favorites = userFavoritesPlus1;
+    }
   });
 
   /**
    * On page load, checks local storage to see if the user is already logged in.
    * Renders page information accordingly.
    */
-
   async function checkIfLoggedIn() {
     // let's see if we're logged in
     const token = localStorage.getItem('token');
@@ -203,9 +272,9 @@ $(async function() {
     //  this is designed to run once, on page load
     currentUser = await User.getLoggedInUser(token, username);
     await generateStories();
-
     if (currentUser) {
       showNavForLoggedInUser();
+      generateProfile();
     }
   }
 
@@ -221,12 +290,17 @@ $(async function() {
     // reset those forms
     $loginForm.trigger('reset');
     $createAccountForm.trigger('reset');
+    //$navProfile.text(currentUser.name)
+    $navWelcome.show();
+
+    generateStories();
 
     // show the stories
     $allStoriesList.show();
 
     // update the navigation bar
     showNavForLoggedInUser();
+    generateProfile();
   }
 
   /**
@@ -244,94 +318,85 @@ $(async function() {
 
     // loop through all of our stories and generate HTML for them
     for (let story of storyList.stories) {
-      const result = generateStoryHTML(story);
-      $allStoriesList.append(result);
+      const storyLi = generateStoryHTML(story);
+
+      if (currentUser) {
+        updateStars(storyLi);
+      }
+      $allStoriesList.append(storyLi);
     }
+  }
+
+  // add stories to a new page
+  function addToPage(storyArray, newPage) {
+    for (let story of storyArray) {
+      const storyLi = generateStoryHTML(story);
+      updateStars(storyLi);
+      newPage.append(storyLi);
+    }
+  }
+
+  // show favorite stories as a filled in star
+  function updateStars(storyLi) {
+    if (checkUserId(storyLi)) {
+      storyLi.children(':first').addClass('fas').removeClass('far');
+    }
+  }
+  // check if story ID matches user ID
+  function checkUserId(storyLi) {
+    return currentUser.favorites.some((userStory) => storyLi.attr('id') === userStory.storyId);
+  }
+
+  function updateUser(array, storyId) {
+    const index = array.findIndex((id) => storyId === id);
+    array.splice(index, 1);
   }
 
   /**
    * A function to render HTML for an individual Story instance
    */
 
-  function generateStoryHTML(story, isOwnStory) {
+  function generateStoryHTML(story) {
     let hostName = getHostName(story.url);
-    let starType = isFavorite(story) ? 'fas' : 'far';
-
-    // render a trash can for deleting your own story
-    const trashCanIcon = isOwnStory
-      ? `<span class="trash-can">
-          <i class="fas fa-trash-alt"></i>
-        </span>`
-      : '';
 
     // render story markup
     const storyMarkup = $(`
-      <li id="${story.storyId}">
-        ${trashCanIcon}
-        <span class="star">
-          <i class="${starType} fa-star"></i>
-        </span>
-        <a class="article-link" href="${story.url}" target="a_blank">
-          <strong>${story.title}</strong>
-          </a>
-        <small class="article-author">by ${story.author}</small>
-        <small class="article-hostname ${hostName}">(${hostName})</small>
-        <small class="article-username">posted by ${story.username}</small>
-      </li>
-    `);
+    <li id="${story.storyId}">
+      <i class="far fa-star star"></i>
+      <a class="article-link" href="${story.url}" target="a_blank">
+        <strong>${story.title}</strong>
+      </a>
+      <small class="article-author">by ${story.author}</small>
+      <small class="article-hostname ${hostName}">(${hostName})</small>
+      <small class="article-username">posted by ${story.username}</small>
+    </li>
+  `);
 
     return storyMarkup;
   }
 
-  function generateFavs() {
-    $favoritePosts.empty();
-    if (currentUser.favorites.length === 0) {
-      $favoritePosts.append('<h5>No favorites added!</h5>');
-    } else {
-      for (let story of currentUser.favorites) {
-        let favoriteHTML = generateStoryHTML(story, false);
-        $favoritePosts.append(favoriteHTML);
-      }
-    }
-  }
-
-  function generateMyStories() {
-    $ownStories.empty();
-    if (currentUser.ownStories.length === 0) {
-      $ownStories.append('<h3>**No stories added**</h3>');
-    } else {
-      for (let story of currentUser.ownStories) {
-        let ownStoryHTML = generateStoryHTML(story, true);
-        $ownStories.append(ownStoryHTML);
-      }
-    }
-    $ownStories.slideToggle();
+  function generateProfile() {
+    $('#profile-name').text(`Name: ${currentUser.name}`);
+    $('#profile-username').text(`Username: ${currentUser.username}`);
+    $('#profile-account-date').text(`Account Created: ${currentUser.createdAt}`);
   }
 
   /* hide all elements in elementsArr */
 
   function hideElements() {
     const elementsArr = [$submitForm, $allStoriesList, $filteredArticles, $ownStories, $loginForm, $createAccountForm];
-    elementsArr.forEach($elem => $elem.hide());
+    elementsArr.forEach(($elem) => $elem.hide());
   }
 
   function showNavForLoggedInUser() {
     $navLogin.hide();
-    $userProfile.hide();
-    $mainNav.toggleClass('hidden');
-    $navUserProfile.text(`${currentUser.username}`);
-    $navWelcome.show();
     $navLogOut.show();
+    $navProfile.text(currentUser.name);
+    $navWelcome.show();
+    $userNavLinks.show();
   }
 
   /* simple function to pull the hostname from a URL */
-  function isFavorite(story) {
-    let favStoryIds = new Set();
-    if (currentUser) {
-      favStoryIds = new Set(currentUser.favorites.map(obj => obj.storyId));
-    }
-    return favStoryIds.has(story.storyId);
-  }
 
   function getHostName(url) {
     let hostName;
